@@ -2,6 +2,15 @@ from collections import defaultdict
 import spacy
 import neuralcoref
 
+from tqdm.auto import tqdm
+
+import logging
+from concurrent.futures.thread import ThreadPoolExecutor
+
+DEBUG = True
+def dprint(*args, **kwargs):
+    if DEBUG:
+        print(*args,*kwargs)
 
 class Parser():
     def __init__(self):
@@ -89,9 +98,8 @@ class Pipeline():
         self.parser = Parser()
 
     def _process_matched_aspect_label(self, token):
-        if token.text in self.plural_aspects:
-            return self.plural_aspects[token.text]
-
+        text = token.text.lower()
+        return self.plural_aspects.get(text, text)
 
     def _extract_spacy_features(self, text):
         return self.nlp(text)
@@ -102,19 +110,19 @@ class Pipeline():
     def _is_anaphora(self, token):
         return token._.in_coref and token.pos_ == "PRON"
 
-    def _parse_review(self, review):
-        doc = self._extract_spacy_features(review)
-        print(doc._.coref_clusters)
+    def _parse_review(self, doc):
+        dprint(doc._.coref_clusters)
         aspect_opinions = defaultdict(list)
         for token in doc:
-            print(token.text, token.pos_, token.dep_, token.head.text, token.head.pos_, [child.text for child in token.children])
+            dprint(token.text, token.pos_, token.dep_, token.head.text, token.head.pos_, [child.text for child in token.children])
             
             if self._is_direct_keyword(token):
                 parses = self.parser.parse_zhuang_phrases(token)
 
+                aspect_label = self._process_matched_aspect_label(token)
                 if parses:
-                    aspect_opinions[token.text.lower()] += parses
-            
+                    aspect_opinions[aspect_label] += parses
+                
             elif self._is_anaphora(token):
                 for cluster in token._.coref_clusters:
                     aspect_count = 0
@@ -125,21 +133,26 @@ class Pipeline():
                         if main_token.text.lower() in self.aspect_lexicon:
                             
                             aspect_count += 1
-                            matched_aspect = main_token.text.lower()
+                            matched_aspect = self._process_matched_aspect_label(main_token)
+                            dprint(matched_aspect)
+
                         
                     if aspect_count == 1:
                         parses = self.parser.parse_zhuang_phrases(token)
 
                         if parses:
+                            dprint(matched_aspect)
                             aspect_opinions[matched_aspect] += parses
-
-        print()
+        dprint("\n")
         return aspect_opinions
 
     def extract_descriptions(self, raw_reviews):
 
         reviews = []
-        for raw_review in raw_reviews:
-            reviews.append(self._parse_review(raw_review))
+        
+        docs = self.nlp.pipe(raw_reviews, disable=["ner"])
+
+        for doc in tqdm(docs):
+            reviews.append(self._parse_review(doc))
         
         return reviews
