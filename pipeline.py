@@ -3,25 +3,11 @@ import spacy
 import neuralcoref
 
 
-
-class Pipeline():
+class Parser():
     def __init__(self):
         super().__init__()
-        self.nlp = spacy.load('en_core_web_lg')
-        neuralcoref.add_to_pipe(self.nlp)
 
-        # We treat entities and aspects to be the same
-        self.aspect_lexicon = {
-            'bruschetta',
-            'pizza',
-            'pizzas',
-            'lasagna',
-            'gnocchi',
-            'gelato',
-            'gelatos'
-        }
-    
-    def _parse_zhuang_phrases(self, token):
+    def parse_zhuang_phrases(self, token):
         """
         Zhuang defines the following templates for movies,
         that are very well satisfiable for food:
@@ -78,6 +64,35 @@ class Pipeline():
 
         return parses
 
+class Pipeline():
+    def __init__(self):
+        super().__init__()
+        self.nlp = spacy.load('en_core_web_lg')
+        neuralcoref.add_to_pipe(self.nlp)
+
+        # We treat entities and aspects to be the same
+        self.aspect_lexicon = {
+            'bruschetta',
+            'pizza',
+            'pizzas',
+            'lasagna',
+            'gnocchi',
+            'gelato',
+            'gelatos'
+        }
+
+        self.plural_aspects = {
+            'pizzas': 'pizza',
+            'gelatos': 'gelato'
+        }
+
+        self.parser = Parser()
+
+    def _process_matched_aspect_label(self, token):
+        if token.text in self.plural_aspects:
+            return self.plural_aspects[token.text]
+
+
     def _extract_spacy_features(self, text):
         return self.nlp(text)
 
@@ -95,7 +110,7 @@ class Pipeline():
             print(token.text, token.pos_, token.dep_, token.head.text, token.head.pos_, [child.text for child in token.children])
             
             if self._is_direct_keyword(token):
-                parses = self._parse_zhuang_phrases(token)
+                parses = self.parser.parse_zhuang_phrases(token)
 
                 if parses:
                     aspect_opinions[token.text.lower()] += parses
@@ -113,8 +128,7 @@ class Pipeline():
                             matched_aspect = main_token.text.lower()
                         
                     if aspect_count == 1:
-
-                        parses = self._parse_zhuang_phrases(token)
+                        parses = self.parser.parse_zhuang_phrases(token)
 
                         if parses:
                             aspect_opinions[matched_aspect] += parses
