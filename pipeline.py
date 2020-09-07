@@ -14,9 +14,11 @@ class Pipeline():
         self.aspect_lexicon = {
             'bruschetta',
             'pizza',
+            'pizzas',
             'lasagna',
             'gnocchi',
-            'gelato'
+            'gelato',
+            'gelatos'
         }
     
     def _parse_zhuang_phrases(self, token):
@@ -31,32 +33,48 @@ class Pipeline():
         head - nsubj - child
 
         We define the additional sub cases for the parse:
-        1. NN-amod-JJ(-conj-JJ) adjectives defined as conjuncts (cold & hard)
-        2. NN <-nsubj- VB -acomp-> JJ (NOUN <-nsubj - VB -acomp->JJ)
+        1. NN <-amod-JJ(-conj-> JJ) adjectives defined as conjuncts (cold & hard)
+        2. NN <-nsubj- VB -acomp/attr-> JJ (NOUN <-nsubj - VB -acomp->JJ)
+        3. NN <-nsubj- JJ -advmod-> ADV (the pizza is very good)
+        4. 
         """
         parses = []
         for child in token.children:
             if child.dep_ == "amod" and child.pos_ == "ADJ":
-                parses.append(child.text)
+                modified_phrase = []
+                for subchild in child.children:
+                    if subchild.dep_ == "npadvmod":
+                        modified_phrase.append(subchild.text)
+                modified_phrase.append(child.text)
+                parses.append(" ".join(modified_phrase))
 
                 # Sub case 1: conjuct adjectives
                 for subchild in child.children:
                     if subchild.dep_ == "conj" and subchild.pos_ == "ADJ":
                         parses.append(subchild.text)
-
+                
+            elif child.dep_ == "amod" and child.pos_ == "VERB":
+                # Sub case 4
+                modified_phrase = []
+                for subchild in child.children:
+                    if subchild.dep_ == "advmod":
+                        modified_phrase.append(subchild.text)
+                modified_phrase.append(child.text)
+                parses.append(" ".join(modified_phrase))
             elif child.dep_ == "nsubj" and child.pos_ == "ADJ":
                 parses.append(child.text)
 
 
         if token.dep_ == "nsubj":
-            print(list(token.head.children))
             for headchild in token.head.children:
-                if headchild.dep_ == "acomp" and headchild.pos_ == "ADJ":
-                    parses.append(headchild.text)
-                elif headchild.dep_ == "advc" and headchild.pos_ == "ADJ":
-                    parses.append(headchild.text)
-
-            
+                if headchild.dep_ in ["acomp", "attr"] and headchild.pos_ == "ADJ":
+                    modified_phrase = []
+                    for headgrandchild in headchild.children:
+                        if headgrandchild.dep_ == "advmod":
+                            modified_phrase.append(headgrandchild.text)
+                    modified_phrase.append(headchild.text)
+                    parses.append(" ".join(modified_phrase))
+                
 
         return parses
 
@@ -92,14 +110,14 @@ class Pipeline():
                         if main_token.text.lower() in self.aspect_lexicon:
                             
                             aspect_count += 1
-                            matched_aspect = main_token
+                            matched_aspect = main_token.text.lower()
                         
                     if aspect_count == 1:
 
                         parses = self._parse_zhuang_phrases(token)
 
                         if parses:
-                            aspect_opinions[matched_aspect.text.lower()] += parses
+                            aspect_opinions[matched_aspect] += parses
 
         print()
         return aspect_opinions
