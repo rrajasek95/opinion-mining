@@ -227,7 +227,7 @@ class Pipeline():
                 self._parse_anaphora(token, mentions, mention_rank, aspect_opinions)
             elif token.pos_ == "NUM" and token.dep_ == "nsubj":
 
-                if re.match("\d+", token.text) or len(mentions) < 1 or mentions[-1][0] < 2:
+                if re.match("\d+", token.text) or len(mentions) < 1 or mentions[-1][0] > 2:
                     # Ignore actual numbers
                     continue
                 matched_mentions = []
