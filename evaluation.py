@@ -100,8 +100,17 @@ def prepare_references(references):
 
 if __name__ == "__main__":
     references = get_annotated_examples_with_opinions()
-    texts = [ref[0] for ref in references]
-    processed_refs = prepare_references(references)
+
+    filtered_refs = []
+
+    for i in range(len(references)):
+        if i > 0 and references[i][0] == references[i - 1][0]:
+            continue
+        else:
+            filtered_refs.append(references[i])
+
+    texts = [ref[0] for ref in filtered_refs]
+    processed_refs = prepare_references(filtered_refs)
 
     pipeline = Pipeline()
 
