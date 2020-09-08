@@ -119,6 +119,19 @@ class Pipeline():
             "(pizzas|lasagne|bruschettas|gelatos|gnocchi) (are,were) (\w{3,})"
         )
 
+        # Only doing from 1 to 5 for now since there are only 5 items
+        # Possible extension is to chunk numbers together
+        self.word_to_number = {
+            'one': 1,
+            'two': 2,
+            'three': 3,
+            'four': 4,
+            'five': 5,
+        }
+
+    def _numericalize_value(self, token):
+        return self.word_to_number.get(token.text)
+
     def _configure_tokenizer(self):
         def is_pronominal(token):
             return token.text.lower() in ("it", "they")
@@ -156,7 +169,7 @@ class Pipeline():
 
     def _parse_anaphora(self, token, mentions, mention_rank, aspect_opinions):
         if token._.is_singular_item:
-            print(token.text)
+            dprint(token.text)
             
             has_neighboring_mentions = len(mentions) > 0 and mentions[-1][0] - mention_rank < 2
 
@@ -173,21 +186,22 @@ class Pipeline():
             matched_mentions = []
             has_neighboring_mentions = len(mentions) > 0 and mentions[-1][0] - mention_rank < 2
             if has_neighboring_mentions:
-                # Collection all mentions of equal rank
+                # Collection all mentions of equal rank in the backwards direction
                 # ensures we don't capture unnecessary mentions
                 matched_mentions.append(mentions[-1])
 
-                for mention in mentions[-1:-1:-1]:
-                    if mention[0] != matched_mentions[-1][0]:
+                for i in range(len(mentions) - 2, -1, -1):
+                    if mentions[i][0] != matched_mentions[-1][0]:
                         break
-                    matched_mentions.append(mention)
+                    matched_mentions.append(mentions[i])
                 dprint(matched_mentions)
                 parses = self.parser.parse_zhuang_phrases(token)
                 if parses:
-                    matched_aspects = [matched_mentions[1] for mention in matched_mentions]
+                    matched_aspects = [mention[1] for mention in matched_mentions]
                     for matched_aspect in matched_aspects:
                         aspect_opinions[matched_aspect] += parses
-    
+
+
     def _parse_review(self, doc):
         dprint(doc._.coref_clusters)
         aspect_opinions = defaultdict(list)
@@ -211,7 +225,34 @@ class Pipeline():
                     aspect_opinions[aspect_label] += parses
             elif token._.is_anaphora:
                 self._parse_anaphora(token, mentions, mention_rank, aspect_opinions)
-                    
+            elif token.pos_ == "NUM" and token.dep_ == "nsubj":
+                matched_mentions = []
+                # This is for now a special case not associated with the parser
+                # until i can find a better way to implement this
+                dprint("number case")
+                take_from = "tail"
+                for child in token.children:
+                    if child.text == "first":
+                        take_from == "head"
+
+                matched_mentions.append(mentions[-1])
+
+                for i in range(len(mentions) - 2, -1, -1):
+                    if mentions[i][0] != matched_mentions[-1][0]:
+                        break
+                    matched_mentions.append(mentions[i])
+                numericalized_val = self._numericalize_value(token)
+
+                if take_from == "tail":
+                    matched_mentions = matched_mentions[-min(numericalized_val, len(matched_mentions)):]
+                else:
+                    matched_mentions = matched_mentions[:min(numericalized_val, len(matched_mentions))]
+
+                parses = self.parser.parse_zhuang_phrases(token)
+                if parses:
+                    matched_aspects = [mention[1] for mention in matched_mentions]
+                    for matched_aspect in matched_aspects:
+                        aspect_opinions[matched_aspect] += parses
         
         for g in re.finditer(self.simple_association_pattern, doc.text):
             sentiment = g.group(1, 3)
