@@ -1,6 +1,14 @@
 import pandas as pd
 from nltk.tokenize import word_tokenize
 
+def get_annotated_examples_with_opinions():
+    df = pd.read_csv('processed_data/annotated_lexicon_based_reviews.csv', dtype={
+        'opinion_target_pairs': 'string'
+    })
+    texts = df['text'].tolist()
+    opinions = df['opinion_target_pairs'].tolist()
+    return list(zip(texts, opinions))
+
 def get_annotated_examples_all():
     df = pd.read_csv('processed_data/annotated_lexicon_based_reviews.csv')
     reviews = df['text'].tolist()

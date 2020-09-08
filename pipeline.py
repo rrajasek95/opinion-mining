@@ -130,7 +130,7 @@ class Pipeline():
         }
 
     def _numericalize_value(self, token):
-        return self.word_to_number.get(token.text)
+        return self.word_to_number.get(token.text.lower())
 
     def _configure_tokenizer(self):
         def is_pronominal(token):
@@ -226,6 +226,10 @@ class Pipeline():
             elif token._.is_anaphora:
                 self._parse_anaphora(token, mentions, mention_rank, aspect_opinions)
             elif token.pos_ == "NUM" and token.dep_ == "nsubj":
+
+                if re.match("\d+", token.text) or len(mentions) < 1 or mentions[-1][0] < 2:
+                    # Ignore actual numbers
+                    continue
                 matched_mentions = []
                 # This is for now a special case not associated with the parser
                 # until i can find a better way to implement this
