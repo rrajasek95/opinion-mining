@@ -1,10 +1,8 @@
 from pipeline import Pipeline
 from pprint import pprint
-
-import pandas as pd
-
-from nltk.tokenize import word_tokenize
 from scipy.stats import describe
+
+from data import get_annotated_examples_all, all_lexicon_based_reviews
 
 def get_provided_examples():
     return [
@@ -18,21 +16,6 @@ def get_provided_examples():
         'I can still taste the spicy tomato sauce on that pizza. It was delicious.',
         'I had the pizza, lasagna and gelato. The first two were ok and the gelato was great.'
     ]
-
-def get_annotated_examples_all():
-    df = pd.read_csv('processed_data/annotated_lexicon_based_reviews.csv')
-    reviews = df['text'].tolist()
-    return reviews
-
-def all_lexicon_based_reviews():
-    df = pd.read_csv('processed_data/lexicon_based_reviews.csv')
-    reviews = df['text'].tolist()
-    filtered_reviews = [review for review in reviews if len(word_tokenize(review)) < 500]
-    # rev_lens = []
-    # for review in reviews:
-    #     rev_lens.append(len(word_tokenize(review)))
-    # print(describe(rev_lens))
-    return reviews
 
 def cherry_picked_examples():
     return [
