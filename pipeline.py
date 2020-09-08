@@ -48,8 +48,21 @@ class Parser():
         2. NN <-nsubj- VB -acomp/attr-> JJ (NOUN <-nsubj - VB -acomp->JJ)
         3. NN <-nsubj- JJ -advmod-> ADV (the pizza is very good)
         4. NN <-nsubj- JJ -advmod-> ADV (-advmod-> ADV )* (the pizza is very good and delicious)
+        
         """
         parses = []
+
+        if token.dep_ == "nsubj":
+            # Token is a noun subject, so we can find adjective clasuses
+            parses = self._extract_direct_dependence(token)
+        elif token.dep_ == "conj":
+            # The token has a conjuct dependency, to another token (of potentially equal rank)
+            # find the opinion of its head token
+            parses = self._extract_direct_dependence(token.head)
+
+        if parses:
+            return parses
+        
         for child in token.children:
             if child.dep_ == "amod" and child.pos_ == "ADJ":
                 modified_phrase = []
@@ -74,15 +87,6 @@ class Parser():
                 parses.append(" ".join(modified_phrase))
             elif child.dep_ == "nsubj" and child.pos_ == "ADJ":
                 parses.append(child.text)
-
-
-        if token.dep_ == "nsubj":
-            # Token is a noun subject, so we can find adjective clasuses
-            parses = self._extract_direct_dependence(token)
-        elif token.dep_ == "conj":
-            # The token has a conjuct dependency, to another token (of potentially equal rank)
-            # find the opinion of its head token
-            parses = self._extract_direct_dependence(token.head)
 
         return parses
 
