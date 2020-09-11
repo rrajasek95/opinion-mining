@@ -1,6 +1,7 @@
 from collections import defaultdict
 import spacy
 from spacy.tokens import Token
+from spacy.matcher import Matcher
 
 import re
 import neuralcoref
@@ -21,13 +22,29 @@ class Parser():
 
     def _extract_direct_dependence(self, token):
         parses = []
+
+        negation = False
+        negword = None
         for headchild in token.head.children:
+            if headchild.dep_ in ["neg"]:
+                negation = True
+                negword = headchild.text
             if headchild.dep_ in ["acomp", "attr"] and headchild.pos_ == "ADJ":
+
                 modified_phrase = []
-                for headgrandchild in headchild.children:
-                    if headgrandchild.dep_ == "advmod":
+
+                if negation:
+                    modified_phrase.append(negword)
+
+                for headgrandchild in headchild.lefts:
+                    if headgrandchild.dep_ in ["advmod", "npadvmod", "cc", "conj"]:
+
                         modified_phrase.append(headgrandchild.text)
                 modified_phrase.append(headchild.text)
+                for headgrandchild in headchild.rights:
+                    if headgrandchild.dep_ in ["advmod", "npadvmod", "cc", "conj"]:
+
+                        modified_phrase.append(headgrandchild.text)
                 parses.append(" ".join(modified_phrase))
         
         return parses
@@ -51,7 +68,6 @@ class Parser():
         
         """
         parses = []
-
         if token.dep_ == "nsubj":
             # Token is a noun subject, so we can find adjective clasuses
             parses = self._extract_direct_dependence(token)
@@ -66,19 +82,16 @@ class Parser():
         for child in token.children:
             if child.dep_ == "amod" and child.pos_ == "ADJ":
                 modified_phrase = []
-                for subchild in child.children:
-                    if subchild.dep_ == "npadvmod":
+                for subchild in child.lefts:
+                    if subchild.dep_ in ["advmod", "npadvmod", "cc", "conj"]:
                         modified_phrase.append(subchild.text)
                 modified_phrase.append(child.text)
+                for subchild in child.rights:
+                    if subchild.dep_ in ["advmod", "npadvmod", "cc", "conj"]:
+                        modified_phrase.append(subchild.text)
                 parses.append(" ".join(modified_phrase))
 
-                # Sub case 1: conjuct adjectives
-                for subchild in child.children:
-                    if subchild.dep_ == "conj" and subchild.pos_ == "ADJ":
-                        parses.append(subchild.text)
-                
             elif child.dep_ == "amod" and child.pos_ == "VERB":
-                # Sub case 4
                 modified_phrase = []
                 for subchild in child.children:
                     if subchild.dep_ == "advmod":
@@ -96,7 +109,7 @@ class Pipeline():
         self.nlp = spacy.load('en_core_web_lg')
         neuralcoref.add_to_pipe(self.nlp)
         self._configure_tokenizer()
-
+        self._configure_matcher()
         # We treat entities and aspects to be the same
         self.aspect_lexicon = {
             'bruschetta',
@@ -116,9 +129,6 @@ class Pipeline():
         }
 
         self.parser = Parser()
-
-        self.simple_association_pattern = re.compile(
-            "(pizza|lasagna|bruschetta|gelato|gnocchi) (is|was) (\w{3,})")
         self.simple_association_pattern_plural = re.compile(
             "(pizzas|lasagne|bruschettas|gelatos|gnocchi) (are,were) (\w{3,})"
         )
@@ -144,7 +154,7 @@ class Pipeline():
             return token.text.lower() == "it" and token.pos_ == "PRON"
 
         def is_plural_item(token):
-            return token.text.lower() == "they"
+            return token.text.lower() == "they" and token.pos_ == "PRON"
 
         def is_quantifier(token):
             return token.text.lower() in ("every", "everything")
@@ -160,7 +170,22 @@ class Pipeline():
         Token.set_extension("is_quantifier", getter=is_quantifier)
         Token.set_extension("is_anaphora", getter=is_anaphora)
         Token.set_extension("is_singular_item", getter=is_singular_item)
+        Token.set_extension("is_plural_item", getter=is_plural_item)
 
+    def _configure_matcher(self):
+        self.matcher = Matcher(self.nlp.vocab)
+
+        simple_association_pattern = [
+            {"LOWER": {"IN": ["pizza", "gnocchi", "bruschetta", "gelato", "lasagna"]}},
+            {"LEMMA": "be"},
+            {"POS": "ADJ"}]
+        plural_association_pattern = [
+            {"LOWER": {"IN": ["pizzas", "gnocchi", "bruschetta", "gelatos", "lasagne"]}},
+            {"LEMMA": "be"},
+            {"POS": "ADJ"}
+        ]
+        self.matcher.add("XwasY", None, simple_association_pattern)
+        self.matcher.add("pluralXwasY", None, plural_association_pattern)
     def _process_matched_aspect_label(self, token):
         text = token.text.lower()
         return self.plural_aspects.get(text, text)
@@ -185,7 +210,24 @@ class Pipeline():
                 if parses:
                     dprint(matched_aspect)
                     aspect_opinions[matched_aspect] += parses
-            # The other alternative are dummy pronouns
+        elif token._.is_plural_item:
+            matched_mentions = []
+            has_neighboring_mentions = len(mentions) > 0 and mentions[-1][0] - mention_rank < 2
+            if has_neighboring_mentions:
+                # Collection all mentions of equal rank in the backwards direction
+                # ensures we don't capture unnecessary mentions
+                matched_mentions.append(mentions[-1])
+
+                for i in range(len(mentions) - 2, -1, -1):
+                    if mentions[i][0] != matched_mentions[-1][0]:
+                        break
+                    matched_mentions.append(mentions[i])
+                dprint(matched_mentions)
+                parses = self.parser.parse_zhuang_phrases(token)
+                if parses:
+                    matched_aspects = [mention[1] for mention in matched_mentions]
+                    for matched_aspect in matched_aspects:
+                        aspect_opinions[matched_aspect] += parses
         elif token._.is_quantifier:
             matched_mentions = []
             has_neighboring_mentions = len(mentions) > 0 and mentions[-1][0] - mention_rank < 2
@@ -204,7 +246,6 @@ class Pipeline():
                     matched_aspects = [mention[1] for mention in matched_mentions]
                     for matched_aspect in matched_aspects:
                         aspect_opinions[matched_aspect] += parses
-
 
     def _parse_review(self, doc):
         dprint(doc._.coref_clusters)
@@ -261,16 +302,16 @@ class Pipeline():
                     matched_aspects = [mention[1] for mention in matched_mentions]
                     for matched_aspect in matched_aspects:
                         aspect_opinions[matched_aspect] += parses
-        
-        for g in re.finditer(self.simple_association_pattern, doc.text):
-            sentiment = g.group(1, 3)
-            item_opinions = aspect_opinions[sentiment[0]]
+        matches = self.matcher(doc)
+
+        for match_id, start, end in matches:
+            item, _, adj = doc[start:end].text.split(" ")
+            item_opinions = aspect_opinions[item]
             for opinion in item_opinions:
-                if sentiment[1] in opinion: 
-                    # Check if we have a more complete parse using our earlier rules
+                if adj in opinion:
                     break
             else:
-                item_opinions.append(sentiment[1])
+                item_opinions.append(adj)
 
         dprint("\n")
         return aspect_opinions

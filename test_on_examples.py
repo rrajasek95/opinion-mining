@@ -20,11 +20,7 @@ def get_provided_examples():
 def cherry_picked_examples():
     return [
         """
-        "Delicious pizza! I had the Lambretta special pizza, minus the prosciutto because I was in the mood for vegetarian (I'm sure it's delicious with the prosciutto too though). It was HUGE but it was thin crust and it was all I was having and I was hungry so I ate the whole thing myself!
-
-The service was very fast and friendly, and the atmosphere and decor of the restaurant were very pleasant and modern. 
-
-I will definitely come back here! The pizza was made from high quality, authentic ingredients, and I didn't feel stuffed in a bad way like I do at other pizza places. I felt great afterwards."
+I used to like the pizza from here. Last time I ordered it was still doughy and I had to cook longer. Today it was ice cold. Not even lukewarm. My kid was screaming for pizza so I didn't send it back. But, I won't ever order from here again. $31 plus tip for a cold pizza and cold soup. There was a piece of "garlic bred". It was half a sub roll uncooked with some garlic butter on it. Yum. Should have had a can of Progresso and a frozen pizza and saved $25. Wait, I could have saved $35. I tipped $10. I figure a poor kid driving his own car deserves a decent tip. I called to let them know and she said sorry we can replace the pizza. My kid ate the cold thing anyway. And who wants to wait another hour for the replacement? Blah. Next time I'll drive my lazy self over to Bonnanos and pick up a pizza myself.
         """
     ]
 
@@ -37,5 +33,15 @@ if __name__ == "__main__":
     # pprint(list(enumerate(pipeline.extract_descriptions(get_annotated_examples_all()))))
     # pprint(list(enumerate(pipeline.extract_descriptions(all_lexicon_based_reviews()))))
     # pprint(list(enumerate(pipeline.extract_descriptions(cherry_picked_examples()))))
-    pprint(list([(i + 1, e) for (i, e) in enumerate(
-        pipeline.extract_descriptions(get_provided_examples()))]))
+    
+    # pprint(list([(i + 1, e) for (i, e) in enumerate(
+    #     pipeline.extract_descriptions(get_provided_examples()))]))
+    provided_examples = cherry_picked_examples()
+    res = zip(provided_examples, pipeline.extract_descriptions(provided_examples))
+
+    for i, r in enumerate(res):
+        # print(f"{i + 1} {r[0]} {r[1]}")
+        print(f"Review ID: {i + 1}")
+        print(f"Text: {r[0]}")
+        print(f"Output: {r[1]}")
+        print()
