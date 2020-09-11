@@ -4,14 +4,45 @@ from spacy.tokens import Token
 from spacy.matcher import Matcher
 
 import re
-import neuralcoref
+# import neuralcoref
 
 from tqdm.auto import tqdm
 
 import logging
 from concurrent.futures.thread import ThreadPoolExecutor
 
-DEBUG = True
+from joblib import Parallel, delayed
+
+import os
+
+nlp = spacy.load('en_core_web_lg')
+# neuralcoref.add_to_pipe(nlp)
+
+"""
+Code copied and slightly tweaked from:
+https://prrao87.github.io/blog/spacy/nlp/performance/2020/05/02/spacy-multiprocess.html#Option-3:-Parallelize-the-work-using-joblib
+"""
+def chunker(iterable, total_length, chunksize):
+    return (iterable[pos: pos + chunksize] for pos in range(0, total_length, chunksize))
+
+def flatten(list_of_lists):
+    "Flatten a list of lists to a combined list"
+    return [item for sublist in list_of_lists for item in sublist]
+
+def process_chunk(texts):
+    preproc_pipe = []
+    for doc in tqdm(nlp.pipe(texts, batch_size=20, disable=["ner"])):
+        preproc_pipe.append(doc)
+    return preproc_pipe
+
+def preprocess_parallel(texts, chunksize=1000):
+    executor = Parallel(n_jobs=10, backend='threading', prefer="processes")
+    do = delayed(process_chunk)
+    tasks = (do(chunk) for chunk in chunker(texts, len(texts), chunksize=chunksize))
+    result = executor(tasks)
+    return flatten(result)
+
+DEBUG = False
 def dprint(*args, **kwargs):
     if DEBUG:
         print(*args,*kwargs)
@@ -104,10 +135,10 @@ class Parser():
         return parses
 
 class Pipeline():
-    def __init__(self):
+    def __init__(self, model='en_core_web_md'):
         super().__init__()
-        self.nlp = spacy.load('en_core_web_lg')
-        neuralcoref.add_to_pipe(self.nlp)
+        # self.nlp = spacy.load(model)
+        # neuralcoref.add_to_pipe(self.nlp)
         self._configure_tokenizer()
         self._configure_matcher()
         # We treat entities and aspects to be the same
@@ -173,7 +204,7 @@ class Pipeline():
         Token.set_extension("is_plural_item", getter=is_plural_item)
 
     def _configure_matcher(self):
-        self.matcher = Matcher(self.nlp.vocab)
+        self.matcher = Matcher(nlp.vocab)
 
         simple_association_pattern = [
             {"LOWER": {"IN": ["pizza", "gnocchi", "bruschetta", "gelato", "lasagna"]}},
@@ -186,12 +217,10 @@ class Pipeline():
         ]
         self.matcher.add("XwasY", None, simple_association_pattern)
         self.matcher.add("pluralXwasY", None, plural_association_pattern)
+
     def _process_matched_aspect_label(self, token):
         text = token.text.lower()
         return self.plural_aspects.get(text, text)
-
-    def _extract_spacy_features(self, text):
-        return self.nlp(text)
 
     def _is_direct_keyword(self, token):
         return token.text.lower() in self.aspect_lexicon
@@ -248,7 +277,7 @@ class Pipeline():
                         aspect_opinions[matched_aspect] += parses
 
     def _parse_review(self, doc):
-        dprint(doc._.coref_clusters)
+        # dprint(doc._.coref_clusters)
         aspect_opinions = defaultdict(list)
 
         mentions = []
@@ -292,11 +321,13 @@ class Pipeline():
                     matched_mentions.append(mentions[i])
                 numericalized_val = self._numericalize_value(token)
 
+                if not numericalized_val:
+                    numericalized_val = 1
+
                 if take_from == "tail":
                     matched_mentions = matched_mentions[-min(numericalized_val, len(matched_mentions)):]
                 else:
                     matched_mentions = matched_mentions[:min(numericalized_val, len(matched_mentions))]
-
                 parses = self.parser.parse_zhuang_phrases(token)
                 if parses:
                     matched_aspects = [mention[1] for mention in matched_mentions]
@@ -317,11 +348,11 @@ class Pipeline():
         return aspect_opinions
 
     def extract_descriptions(self, raw_reviews):
-
+        print("Number of reviews:", len(raw_reviews))
         reviews = []
-        
-        docs = self.nlp.pipe(raw_reviews, disable=["ner"])
 
+        # docs = self.nlp.pipe(raw_reviews, disable=["ner"])
+        docs = preprocess_parallel(raw_reviews)
         for doc in tqdm(docs):
             reviews.append(self._parse_review(doc))
         
