@@ -160,9 +160,6 @@ class Pipeline():
         }
 
         self.parser = Parser()
-        self.simple_association_pattern_plural = re.compile(
-            "(pizzas|lasagne|bruschettas|gelatos|gnocchi) (are,were) (\w{3,})"
-        )
 
         # Only doing from 1 to 5 for now since there are only 5 items
         # Possible extension is to chunk numbers together
@@ -337,7 +334,8 @@ class Pipeline():
 
         for match_id, start, end in matches:
             item, _, adj = doc[start:end].text.split(" ")
-            item_opinions = aspect_opinions[item]
+            singular_item = plural_aspects.get(item, item) # De-pluralize items
+            item_opinions = aspect_opinions[singular_item]
             for opinion in item_opinions:
                 if adj in opinion:
                     break
